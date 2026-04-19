@@ -3,7 +3,7 @@ import torch
 import torchvision.transforms as transforms
 from PIL import Image
 import numpy as np
-import os
+from collections import OrderedDict
 from streamlit_drawable_canvas import st_canvas
 
 # Import our architectures from models.py
@@ -99,7 +99,9 @@ elif question == "Q2: Pix2Pix (Sketch to Photo)":
                     
                     # Load Model
                     model = UNetGenerator(in_channels=3, out_channels=3)
-                    model.load_state_dict(torch.load("Model/pix2pix_export_q2.pt", map_location="cpu"))
+                    checkpoint_q2 = torch.load("Model/pix2pix_export_q2.pt", map_location="cpu")
+                    # Extract ONLY the generator weights from the dictionary
+                    model.load_state_dict(checkpoint_q2["generator"])
                     model.eval()
                     
                     # Inference
@@ -162,11 +164,17 @@ elif question == "Q3: CycleGAN (Unpaired Translation)":
                 
                 # Depending on how it was saved, try common key names
                 if direction == "Sketch ➡️ Photo":
-                    weights = checkpoint.get('G_AB', checkpoint) # Fallback to raw if not dict
+                    raw_weights = checkpoint.get('G_AB', checkpoint) 
                 else:
-                    weights = checkpoint.get('G_BA', checkpoint)
+                    raw_weights = checkpoint.get('G_BA', checkpoint)
+                
+                # Fix the Multi-GPU "module." prefix issue
+                clean_weights = OrderedDict()
+                for k, v in raw_weights.items():
+                    name = k[7:] if k.startswith('module.') else k # Remove 'module.'
+                    clean_weights[name] = v
                     
-                model.load_state_dict(weights)
+                model.load_state_dict(clean_weights)
                 model.eval()
                 
                 # Inference

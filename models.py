@@ -7,7 +7,8 @@ import torch.nn as nn
 class DCGAN_Generator(nn.Module):
     def __init__(self, nz=100, ngf=64, nc=3):
         super(DCGAN_Generator, self).__init__()
-        self.main = nn.Sequential(
+        # Changed from self.main to self.net to match saved weights
+        self.net = nn.Sequential(
             nn.ConvTranspose2d(nz, ngf * 8, 4, 1, 0, bias=False),
             nn.BatchNorm2d(ngf * 8),
             nn.ReLU(True),
@@ -25,13 +26,13 @@ class DCGAN_Generator(nn.Module):
         )
 
     def forward(self, input):
-        return self.main(input)
+        return self.net(input)
 
 class WGAN_Generator(nn.Module):
-    # Very similar to DCGAN but often uses different normalization or omits it
     def __init__(self, nz=100, ngf=64, nc=3):
         super(WGAN_Generator, self).__init__()
-        self.main = nn.Sequential(
+        # Changed from self.main to self.net to match saved weights
+        self.net = nn.Sequential(
             nn.ConvTranspose2d(nz, ngf * 8, 4, 1, 0, bias=False),
             nn.BatchNorm2d(ngf * 8),
             nn.ReLU(True),
@@ -49,7 +50,7 @@ class WGAN_Generator(nn.Module):
         )
 
     def forward(self, input):
-        return self.main(input)
+        return self.net(input)
 
 # ==========================================
 # QUESTION 2: Pix2Pix (U-Net)
