@@ -1,104 +1,180 @@
 import streamlit as st
 import torch
-import torch.nn as nn
+import torchvision.transforms as transforms
+from PIL import Image
 import numpy as np
 import os
-from torchvision.utils import make_grid
+from streamlit_drawable_canvas import st_canvas
 
-class Generator(nn.Module):
-    def __init__(self, nz=100, ngf=64, nc=3):
-        super(Generator, self).__init__()
-        self.main = nn.Sequential(
-            nn.ConvTranspose2d(nz, ngf * 8, 4, 1, 0, bias=False),
-            nn.BatchNorm2d(ngf * 8),
-            nn.ReLU(True),
-            nn.ConvTranspose2d(ngf * 8, ngf * 4, 4, 2, 1, bias=False),
-            nn.BatchNorm2d(ngf * 4),
-            nn.ReLU(True),
-            nn.ConvTranspose2d(ngf * 4, ngf * 2, 4, 2, 1, bias=False),
-            nn.BatchNorm2d(ngf * 2),
-            nn.ReLU(True),
-            nn.ConvTranspose2d(ngf * 2, ngf, 4, 2, 1, bias=False),
-            nn.BatchNorm2d(ngf),
-            nn.ReLU(True),
-            nn.ConvTranspose2d(ngf, nc, 4, 2, 1, bias=False),
-            nn.Tanh()
-        )
+# Import our architectures from models.py
+from models import DCGAN_Generator, WGAN_Generator, UNetGenerator, ResNetGenerator
 
-    def forward(self, input):
-        return self.main(input)
+st.set_page_config(page_title="GAN Explorer | FAST-NU", layout="wide")
+st.title("Generative AI Assignment 3: GAN Explorer")
+st.sidebar.title("Navigation")
 
-@st.cache_resource
-def load_gan_model(model_path):
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    model = Generator(nz=100, ngf=64, nc=3).to(device)
-    try:
-        model.load_state_dict(torch.load(model_path, map_location=device))
-        model.eval()
-        return model, device
-    except Exception as e:
-        return None, device
+# Helper function to convert output tensors to displayable images
+def tensor_to_image(tensor):
+    image = tensor.cpu().detach().squeeze(0)
+    image = (image + 1) / 2.0  # Un-normalize from [-1, 1] to [0, 1]
+    image = transforms.ToPILImage()(image)
+    return image
 
-st.set_page_config(page_title="Generative AI - Assignment 3", layout="wide")
+# Navigation
+question = st.sidebar.radio("Select Question:", [
+    "Q1: Mode Collapse (DCGAN vs WGAN)",
+    "Q2: Pix2Pix (Sketch to Photo)",
+    "Q3: CycleGAN (Unpaired Translation)"
+])
 
-st.sidebar.title("FAST NUCES - Spring 2026")
+# =======================================================
+# Q1: DCGAN vs WGAN
+# =======================================================
+if question == "Q1: Mode Collapse (DCGAN vs WGAN)":
+    st.header("Noise to Image Generation")
+    st.markdown("Compare the outputs of standard DCGAN against the improved WGAN-GP.")
+    
+    model_choice = st.radio("Select Model:", ("DCGAN", "WGAN-GP"))
+    
+    if st.button("Generate Images"):
+        with st.spinner(f"Generating with {model_choice}..."):
+            try:
+                # Load correct model
+                if model_choice == "DCGAN":
+                    model = DCGAN_Generator(nz=100, ngf=64, nc=3)
+                    model.load_state_dict(torch.load("Model/dcgan_generator_final.pt", map_location="cpu"))
+                else:
+                    model = WGAN_Generator(nz=100, ngf=64, nc=3)
+                    model.load_state_dict(torch.load("Model/wgangp_generator_final.pt", map_location="cpu"))
+                
+                model.eval()
+                
+                # Generate 4 random images
+                noise = torch.randn(4, 100, 1, 1)
+                with torch.no_grad():
+                    fakes = model(noise)
+                
+                # Display images in a grid
+                cols = st.columns(4)
+                for i in range(4):
+                    with cols[i]:
+                        st.image(tensor_to_image(fakes[i].unsqueeze(0)), use_container_width=True)
+            except Exception as e:
+                st.error(f"Error loading model: {e}")
 
-st.title("Question 1: Tackling Mode Collapse in GANs")
-st.write("Comparing baseline DCGAN with an improved WGAN-GP system to evaluate training stability and diversity[cite: 24, 28].")
-
-num_samples = st.slider("Select number of images to generate", 4, 16, 8, step=4)
-
-if st.button("Generate Comparison"):
+# =======================================================
+# Q2: Pix2Pix 
+# =======================================================
+elif question == "Q2: Pix2Pix (Sketch to Photo)":
+    st.header("Paired Sketch-to-Photo Translation")
+    
     col1, col2 = st.columns(2)
-    
-    dc_path = "Model/dcgan_generator.pth"
-    wg_path = "Model/wgan_generator.pth"
-    
-    noise = torch.randn(num_samples, 100, 1, 1)
-    
     with col1:
-        st.subheader("DCGAN (Baseline)")
-        model_dc, dev = load_gan_model(dc_path)
-        if model_dc:
-            with torch.no_grad():
-                out = model_dc(noise.to(dev)).cpu()
-            grid = make_grid(out, padding=2, normalize=True)
-            st.image(np.transpose(grid.numpy(), (1, 2, 0)), use_container_width=True)
-        else:
-            st.warning(f"Weights not found at {dc_path}.")
+        st.subheader("Draw a Sketch")
+        canvas_result = st_canvas(
+            fill_color="white",
+            stroke_width=2,
+            stroke_color="black",
+            background_color="white",
+            height=256,
+            width=256,
+            drawing_mode="freedraw",
+            key="canvas_q2",
+        )
+    
+    if st.button("Translate to Photo"):
+        if canvas_result.image_data is not None:
+            with st.spinner("Translating..."):
+                try:
+                    # Convert Canvas to PIL Image
+                    input_img = Image.fromarray((canvas_result.image_data).astype(np.uint8)).convert('RGB')
+                    
+                    # Transform
+                    transform = transforms.Compose([
+                        transforms.Resize((256, 256)),
+                        transforms.ToTensor(),
+                        transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))
+                    ])
+                    input_tensor = transform(input_img).unsqueeze(0)
+                    
+                    # Load Model
+                    model = UNetGenerator(in_channels=3, out_channels=3)
+                    model.load_state_dict(torch.load("Model/pix2pix_export_q2.pt", map_location="cpu"))
+                    model.eval()
+                    
+                    # Inference
+                    with torch.no_grad():
+                        output_tensor = model(input_tensor)
+                    
+                    with col2:
+                        st.subheader("Generated Photo")
+                        st.image(tensor_to_image(output_tensor), use_container_width=True)
+                except Exception as e:
+                    st.error(f"Translation Error: {e}")
 
-    with col2:
-        st.subheader("WGAN-GP (Advanced)")
-        model_wg, dev = load_gan_model(wg_path)
-        if model_wg:
-            with torch.no_grad():
-                out = model_wg(noise.to(dev)).cpu()
-            grid = make_grid(out, padding=2, normalize=True)
-            st.image(np.transpose(grid.numpy(), (1, 2, 0)), use_container_width=True)
-        else:
-            st.warning(f"Weights not found at {wg_path}.")
+# =======================================================
+# Q3: CycleGAN 
+# =======================================================
+elif question == "Q3: CycleGAN (Unpaired Translation)":
+    st.header("Unpaired Image Translation (CycleGAN)")
+    
+    direction = st.radio("Select Translation Direction:", ("Sketch ➡️ Photo", "Photo ➡️ Sketch"))
+    
+    col1, col2 = st.columns(2)
+    with col1:
+        st.subheader("Input Image (Upload or Draw)")
+        uploaded_file = st.file_uploader("Upload an image...", type=["jpg", "png", "jpeg"])
+        
+        # Fallback to canvas if no upload
+        if not uploaded_file:
+            st.markdown("*Or draw something below:*")
+            canvas_result = st_canvas(
+                fill_color="white",
+                stroke_width=2,
+                stroke_color="black",
+                background_color="white",
+                height=128,
+                width=128,
+                drawing_mode="freedraw",
+                key="canvas_q3",
+            )
+            
+    if st.button("Translate"):
+        with st.spinner("Translating..."):
+            try:
+                # Prepare Image
+                if uploaded_file is not None:
+                    input_img = Image.open(uploaded_file).convert('RGB')
+                else:
+                    input_img = Image.fromarray((canvas_result.image_data).astype(np.uint8)).convert('RGB')
 
-st.divider()
-st.header("Training Logs and Quantitative Evaluation")
-
-log_col1, log_col2 = st.columns(2)
-
-with log_col1:
-    st.subheader("DCGAN Loss Plots")
-    if os.path.exists("Model/dcgan_loss.png"):
-        st.image("Model/dcgan_loss.png", caption="DCGAN Generator vs Discriminator Loss [cite: 116, 117]")
-    else:
-        st.info("Upload dcgan_loss.png to the Model folder to display training logs.")
-
-with log_col2:
-    st.subheader("WGAN-GP Loss Plots")
-    if os.path.exists("Model/wgan_loss.png"):
-        st.image("Model/wgan_loss.png", caption="WGAN-GP Generator vs Critic Loss [cite: 116, 117]")
-    else:
-        st.info("Upload wgan_loss.png to the Model folder to display training logs.")
-
-st.subheader("Model Performance Analysis")
-st.write("""
-This system demonstrates how advanced loss functions like Wasserstein Loss with Gradient Penalty improve training stability[cite: 28, 65]. 
-WGAN-GP effectively eliminates mode collapse and improves the diversity of generated samples compared to the baseline DCGAN model[cite: 63, 64].
-""")
+                # Transform (Resizing to 128x128 as per Q3 PDF requirements)
+                transform = transforms.Compose([
+                    transforms.Resize((128, 128)),
+                    transforms.ToTensor(),
+                    transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))
+                ])
+                input_tensor = transform(input_img).unsqueeze(0)
+                
+                # Load CycleGAN model from single dictionary file
+                model = ResNetGenerator(n_residual_blocks=6)
+                checkpoint = torch.load("Model/cyclegan_weights.pt", map_location="cpu")
+                
+                # Depending on how it was saved, try common key names
+                if direction == "Sketch ➡️ Photo":
+                    weights = checkpoint.get('G_AB', checkpoint) # Fallback to raw if not dict
+                else:
+                    weights = checkpoint.get('G_BA', checkpoint)
+                    
+                model.load_state_dict(weights)
+                model.eval()
+                
+                # Inference
+                with torch.no_grad():
+                    output_tensor = model(input_tensor)
+                
+                with col2:
+                    st.subheader("Output Translation")
+                    st.image(tensor_to_image(output_tensor), use_container_width=True)
+            except Exception as e:
+                st.error(f"Translation Error: {e}")

@@ -1,6 +1,8 @@
-streamlit
-torch
-torchvision
-numpy
-matplotlib
-Pillow
+streamlit 
+torch 
+torchvision 
+numpy 
+Pillow 
+streamlit-drawable-canvas 
+opencv-python-headless 
+scikit-image
