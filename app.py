@@ -6,30 +6,24 @@ import numpy as np
 from collections import OrderedDict
 from streamlit_drawable_canvas import st_canvas
 
-# Import our architectures from models.py
 from models import DCGAN_Generator, WGAN_Generator, UNetGenerator, ResNetGenerator
 
 st.set_page_config(page_title="GAN Explorer | FAST-NU", layout="wide")
 st.title("Generative AI Assignment 3: GAN Explorer")
 st.sidebar.title("Navigation")
 
-# Helper function to convert output tensors to displayable images
 def tensor_to_image(tensor):
     image = tensor.cpu().detach().squeeze(0)
-    image = (image + 1) / 2.0  # Un-normalize from [-1, 1] to [0, 1]
+    image = (image + 1) / 2.0
     image = transforms.ToPILImage()(image)
     return image
 
-# Navigation
 question = st.sidebar.radio("Select Question:", [
     "Q1: Mode Collapse (DCGAN vs WGAN)",
     "Q2: Pix2Pix (Sketch to Photo)",
     "Q3: CycleGAN (Unpaired Translation)"
 ])
 
-# =======================================================
-# Q1: DCGAN vs WGAN
-# =======================================================
 if question == "Q1: Mode Collapse (DCGAN vs WGAN)":
     st.header("Noise to Image Generation")
     st.markdown("Compare the outputs of standard DCGAN against the improved WGAN-GP.")
@@ -39,7 +33,6 @@ if question == "Q1: Mode Collapse (DCGAN vs WGAN)":
     if st.button("Generate Images"):
         with st.spinner(f"Generating with {model_choice}..."):
             try:
-                # Load correct model
                 if model_choice == "DCGAN":
                     model = DCGAN_Generator(nz=100, ngf=64, nc=3)
                     model.load_state_dict(torch.load("Model/dcgan_generator_final.pt", map_location="cpu"))
@@ -49,12 +42,10 @@ if question == "Q1: Mode Collapse (DCGAN vs WGAN)":
                 
                 model.eval()
                 
-                # Generate 4 random images
                 noise = torch.randn(4, 100, 1, 1)
                 with torch.no_grad():
                     fakes = model(noise)
                 
-                # Display images in a grid
                 cols = st.columns(4)
                 for i in range(4):
                     with cols[i]:
@@ -62,9 +53,6 @@ if question == "Q1: Mode Collapse (DCGAN vs WGAN)":
             except Exception as e:
                 st.error(f"Error loading model: {e}")
 
-# =======================================================
-# Q2: Pix2Pix 
-# =======================================================
 elif question == "Q2: Pix2Pix (Sketch to Photo)":
     st.header("Paired Sketch-to-Photo Translation")
     
@@ -86,10 +74,8 @@ elif question == "Q2: Pix2Pix (Sketch to Photo)":
         if canvas_result.image_data is not None:
             with st.spinner("Translating..."):
                 try:
-                    # Convert Canvas to PIL Image
                     input_img = Image.fromarray((canvas_result.image_data).astype(np.uint8)).convert('RGB')
                     
-                    # Transform
                     transform = transforms.Compose([
                         transforms.Resize((256, 256)),
                         transforms.ToTensor(),
@@ -97,14 +83,11 @@ elif question == "Q2: Pix2Pix (Sketch to Photo)":
                     ])
                     input_tensor = transform(input_img).unsqueeze(0)
                     
-                    # Load Model
                     model = UNetGenerator(in_channels=3, out_channels=3)
                     checkpoint_q2 = torch.load("Model/pix2pix_export_q2.pt", map_location="cpu")
-                    # Extract ONLY the generator weights from the dictionary
                     model.load_state_dict(checkpoint_q2["generator"])
                     model.eval()
                     
-                    # Inference
                     with torch.no_grad():
                         output_tensor = model(input_tensor)
                     
@@ -114,9 +97,6 @@ elif question == "Q2: Pix2Pix (Sketch to Photo)":
                 except Exception as e:
                     st.error(f"Translation Error: {e}")
 
-# =======================================================
-# Q3: CycleGAN 
-# =======================================================
 elif question == "Q3: CycleGAN (Unpaired Translation)":
     st.header("Unpaired Image Translation (CycleGAN)")
     
@@ -127,7 +107,6 @@ elif question == "Q3: CycleGAN (Unpaired Translation)":
         st.subheader("Input Image (Upload or Draw)")
         uploaded_file = st.file_uploader("Upload an image...", type=["jpg", "png", "jpeg"])
         
-        # Fallback to canvas if no upload
         if not uploaded_file:
             st.markdown("*Or draw something below:*")
             canvas_result = st_canvas(
@@ -144,13 +123,11 @@ elif question == "Q3: CycleGAN (Unpaired Translation)":
     if st.button("Translate"):
         with st.spinner("Translating..."):
             try:
-                # Prepare Image
                 if uploaded_file is not None:
                     input_img = Image.open(uploaded_file).convert('RGB')
                 else:
                     input_img = Image.fromarray((canvas_result.image_data).astype(np.uint8)).convert('RGB')
 
-                # Transform (Resizing to 128x128 as per Q3 PDF requirements)
                 transform = transforms.Compose([
                     transforms.Resize((128, 128)),
                     transforms.ToTensor(),
@@ -158,28 +135,22 @@ elif question == "Q3: CycleGAN (Unpaired Translation)":
                 ])  
                 input_tensor = transform(input_img).unsqueeze(0)
                 
-                # Load CycleGAN model from single dictionary file
                 model = ResNetGenerator(n_residual_blocks=6)
                 checkpoint = torch.load("Model/cyclegan_weights.pt", map_location="cpu")
                 
-                # Depending on how it was saved, try common key names      
                 if direction == "Sketch ➡️ Photo":
-                    # Try common names for G_AB
                     raw_weights = checkpoint.get('G_AB', checkpoint.get('G_B', checkpoint.get('G_sketch2photo', checkpoint)))
                 else:
-                    # Try common names for G_BA
                     raw_weights = checkpoint.get('G_BA', checkpoint.get('G_A', checkpoint.get('G_photo2sketch', checkpoint)))
                 
-                # Fix the Multi-GPU "module." prefix issue
                 clean_weights = OrderedDict()
                 for k, v in raw_weights.items():
-                    name = k[7:] if k.startswith('module.') else k # Remove 'module.'
+                    name = k[7:] if k.startswith('module.') else k
                     clean_weights[name] = v
                     
                 model.load_state_dict(clean_weights)
                 model.eval()
                 
-                # Inference
                 with torch.no_grad():
                     output_tensor = model(input_tensor)
                 

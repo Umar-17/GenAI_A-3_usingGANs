@@ -1,4 +1,4 @@
-# Tackling Mode Collapse in Generative Adversarial Networks (GANs)
+# Generative AI Assignment 3: GAN Explorer
 
 <div align="center">
   <img src="https://img.shields.io/badge/Python-3776AB?style=for-the-badge&logo=python&logoColor=white" alt="Python" />
@@ -11,79 +11,59 @@
 <br/>
 
 ## 🎯 Objective
-The objective of this project is to design and implement a Generative Adversarial Network (GAN) system and address the common problem of **mode collapse** by improving training stability using advanced techniques. The implementation includes:
-- A baseline **Deep Convolutional GAN (DCGAN)**
-- An improved **Wasserstein GAN with Gradient Penalty (WGAN-GP)**
+This repository contains the implementation of three distinct tasks focusing on Generative Adversarial Networks (GANs) and image-to-image translation models. The integrated Streamlit application allows users to interact with and explore the deployed models.
 
-The system demonstrates how advanced loss functions improve the training stability and the diversity of generated images.
+### Question 1: Mode Collapse (DCGAN vs WGAN-GP)
+- **Objective:** Address the common problem of **mode collapse** by improving training stability.
+- **Implementation:** Compares a baseline **Deep Convolutional GAN (DCGAN)** with an improved **Wasserstein GAN with Gradient Penalty (WGAN-GP)**.
+- **Dataset:** Anime Faces / Pokemon Sprites.
+
+### Question 2: Pix2Pix (Sketch to Photo Translation)
+- **Objective:** Implement a conditional GAN for paired image-to-image translation.
+- **Implementation:** Uses a **U-Net** Generator and a PatchGAN Discriminator to translate sketches into fully colored photos.
+- **Features:** Interactive drawing canvas in the app to translate free-hand sketches.
+
+### Question 3: CycleGAN (Unpaired Translation)
+- **Objective:** Perform unpaired image translation where aligned dataset pairs are not available.
+- **Implementation:** Uses a **ResNet (6-block)** Generator and Cycle-Consistency Loss to translate images between two distinct domains (e.g., Photo ↔ Sketch).
+- **Features:** Supports translation in both directions using uploaded images or the interactive drawing canvas.
 
 ---
 
 ## 🛠️ Environment Setup
-- **Platform:** Kaggle
-- **Accelerator:** GPU T4 x2 (Dual GPU) utilized for accelerated training.
-- **Datasets Used:**
-  - [Pokemon Sprites](https://www.kaggle.com/datasets/jackemartin/pokemon-sprites)
-  - [Anime Faces (64×64)](https://www.kaggle.com/datasets/soumikrakshit/anime-faces)
+- **Frameworks:** PyTorch, Torchvision
+- **Deployment Platform:** Streamlit
+- **Accelerator:** GPU T4 x2 (Dual GPU) utilized for accelerated training on Kaggle.
 
 ---
 
-## 🧠 Model Architecture
+## 🧠 Model Architectures
 
-### 1. Baseline Model: DCGAN Configuration
-- **Input Noise Vector (z):** 100-dimensional
-- **Image Size:** 64 × 64
-- **Generator:** Transposed Convolution Layers, Batch Normalization, ReLU Activation, Output Activation: Tanh.
-- **Discriminator:** Convolutional Layers, LeakyReLU Activation, Output Activation: Sigmoid.
-- **Goals:** Generate realistic images from noise, learn data distribution of the training dataset, and provide baseline performance for comparison.
-
-### 2. Advanced Model: WGAN-GP Configuration
-- **Discriminator Replacement:** Replaced with a **Critic** (no sigmoid activation).
-- **Loss Function:** Wasserstein Loss.
-- **Gradient Penalty:** λ = 10.
-- **Critic updates per Generator update:** 5.
-- **Goals:** Eliminate mode collapse, improve diversity of generated samples, and ensure stable training dynamics.
+1. **DCGAN / WGAN-GP:** Transposed Convolutional Generator with Discriminator/Critic architectures.
+2. **Pix2Pix:** U-Net based Generator with skip connections to preserve spatial details.
+3. **CycleGAN:** ResNet based Generator (6 residual blocks) for robust domain translation without structure loss.
 
 ---
 
-## 🚀 Implementation Details
+## 🚀 Repository Content
 
-### Part 1: Data Preparation
-1. Load dataset (Pokemon / Anime Faces).
-2. Resize all images to `64 × 64`.
-3. Normalize images to range `[-1, 1]`.
-4. Create PyTorch `DataLoader`.
-
-### Part 2: Forward Pass & Loss Computation
-**DCGAN:**
-1. Sample random noise vector (z).
-2. Generate fake image using the Generator.
-3. Pass real and fake images to Discriminator.
-4. Compute **Binary Cross Entropy (BCE) Loss**.
-
-**WGAN-GP:**
-1. Generate fake images.
-2. Compute critic scores for real and fake images.
-3. Calculate **Wasserstein loss**.
-4. Apply **Gradient Penalty**.
-
-### Part 3: Training Setup
-- **Optimizer:** `Adam` (Learning Rate: `0.0002`, Betas: `(0.5, 0.999)`)
-- **Training Strategy:** DCGAN was trained first to establish a baseline, followed by WGAN-GP for comparative performance.
-- **Training Techniques:** To fit the Kaggle T4×2 environment, techniques like Mixed Precision (`torch.cuda.amp`), batch size adjustments (e.g., 64), and frequent checkpointing were used.
+- **`Notebook/`**: Complete Jupyter/Kaggle notebooks containing the training code for DCGAN, WGAN-GP, Pix2Pix, and CycleGAN.
+- **`Model/`**: Contains the saved PyTorch model weights for all three questions:
+  - `dcgan_generator_final.pt`
+  - `wgangp_generator_final.pt`
+  - `pix2pix_export_q2.pt`
+  - `cyclegan_weights.pt`
+- **`models.py`**: Model architecture definitions (DCGAN, WGAN-GP, U-Net, ResNet).
+- **`app.py`**: The interactive **Streamlit** deployed application demonstrating the answers to all three questions.
 
 ---
 
-## 🖼️ Visualization and Deliverables
-
-A comprehensive visualization module has been implemented to display generated images from both DCGAN and WGAN-GP, allowing for a direct comparison of diversity and quality.
-
-### Repository Content
-- **`Notebook/gen-ai-a-3-q1.ipynb`**: Complete PyTorch implementation of DCGAN and WGAN-GP, including dataset preparation, model architecture, training loop, and evaluation charts (Generator vs. Discriminator/Critic Loss).
-- **`Model/`**: Contains the saved PyTorch model weights.
-  - `dcgan_generator.pth`
-  - `wgan_generator.pth`
-- **`app.py`**: A **Streamlit** deployed application demonstrating both models interactively, enabling real-world testing and side-by-side comparison.
+## 🖼️ Application Usage
+Run the following command to start the Streamlit application:
+```bash
+streamlit run app.py
+```
+Use the sidebar to navigate between Q1 (Noise to Image), Q2 (Sketch to Photo), and Q3 (CycleGAN translation).
 
 ---
 
