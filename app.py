@@ -155,18 +155,20 @@ elif question == "Q3: CycleGAN (Unpaired Translation)":
                     transforms.Resize((128, 128)),
                     transforms.ToTensor(),
                     transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))
-                ])
+                ])  
                 input_tensor = transform(input_img).unsqueeze(0)
                 
                 # Load CycleGAN model from single dictionary file
                 model = ResNetGenerator(n_residual_blocks=6)
                 checkpoint = torch.load("Model/cyclegan_weights.pt", map_location="cpu")
                 
-                # Depending on how it was saved, try common key names
+                # Depending on how it was saved, try common key names      
                 if direction == "Sketch ➡️ Photo":
-                    raw_weights = checkpoint.get('G_AB', checkpoint) 
+                    # Try common names for G_AB
+                    raw_weights = checkpoint.get('G_AB', checkpoint.get('G_B', checkpoint.get('G_sketch2photo', checkpoint)))
                 else:
-                    raw_weights = checkpoint.get('G_BA', checkpoint)
+                    # Try common names for G_BA
+                    raw_weights = checkpoint.get('G_BA', checkpoint.get('G_A', checkpoint.get('G_photo2sketch', checkpoint)))
                 
                 # Fix the Multi-GPU "module." prefix issue
                 clean_weights = OrderedDict()
