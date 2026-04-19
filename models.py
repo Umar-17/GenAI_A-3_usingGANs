@@ -7,7 +7,6 @@ import torch.nn as nn
 class DCGAN_Generator(nn.Module):
     def __init__(self, nz=100, ngf=64, nc=3):
         super(DCGAN_Generator, self).__init__()
-        # Changed from self.main to self.net to match saved weights
         self.net = nn.Sequential(
             nn.ConvTranspose2d(nz, ngf * 8, 4, 1, 0, bias=False),
             nn.BatchNorm2d(ngf * 8),
@@ -31,7 +30,6 @@ class DCGAN_Generator(nn.Module):
 class WGAN_Generator(nn.Module):
     def __init__(self, nz=100, ngf=64, nc=3):
         super(WGAN_Generator, self).__init__()
-        # Changed from self.main to self.net to match saved weights
         self.net = nn.Sequential(
             nn.ConvTranspose2d(nz, ngf * 8, 4, 1, 0, bias=False),
             nn.BatchNorm2d(ngf * 8),
@@ -55,61 +53,87 @@ class WGAN_Generator(nn.Module):
 # ==========================================
 # QUESTION 2: Pix2Pix (U-Net)
 # ==========================================
-class UNetDown(nn.Module):
-    def __init__(self, in_channels, out_channels, normalize=True, dropout=0.0):
+# Rebuilt to exactly match the e0/d0 state_dict keys
+class DownBlock(nn.Module):
+    def __init__(self, in_c, out_c):
         super().__init__()
-        layers = [nn.Conv2d(in_channels, out_channels, 4, 2, 1, bias=False)]
-        if normalize: layers.append(nn.InstanceNorm2d(out_channels))
-        layers.append(nn.LeakyReLU(0.2))
-        if dropout: layers.append(nn.Dropout(dropout))
-        self.model = nn.Sequential(*layers)
-    def forward(self, x): return self.model(x)
+        self.conv = nn.Sequential(
+            nn.Conv2d(in_c, out_c, 4, 2, 1, bias=False),
+            nn.BatchNorm2d(out_c),
+            nn.LeakyReLU(0.2)
+        )
+    def forward(self, x):
+        return self.conv(x)
 
-class UNetUp(nn.Module):
-    def __init__(self, in_channels, out_channels, dropout=0.0):
+class UpBlock(nn.Module):
+    def __init__(self, in_c, out_c, dropout=False):
         super().__init__()
         layers = [
-            nn.ConvTranspose2d(in_channels, out_channels, 4, 2, 1, bias=False),
-            nn.InstanceNorm2d(out_channels),
-            nn.ReLU(inplace=True)
+            nn.ConvTranspose2d(in_c, out_c, 4, 2, 1, bias=False),
+            nn.BatchNorm2d(out_c),
+            nn.ReLU()
         ]
-        if dropout: layers.append(nn.Dropout(dropout))
-        self.model = nn.Sequential(*layers)
-    def forward(self, x, skip_input):
-        x = self.model(x)
-        return torch.cat((x, skip_input), 1)
+        if dropout:
+            layers.append(nn.Dropout(0.5))
+        self.conv = nn.Sequential(*layers)
+        
+    def forward(self, x, skip):
+        x = self.conv(x)
+        return torch.cat([x, skip], dim=1)
 
 class UNetGenerator(nn.Module):
     def __init__(self, in_channels=3, out_channels=3):
         super().__init__()
-        self.down1 = UNetDown(in_channels, 64, normalize=False)
-        self.down2 = UNetDown(64, 128)
-        self.down3 = UNetDown(128, 256)
-        self.down4 = UNetDown(256, 512, dropout=0.5)
-        self.down5 = UNetDown(512, 512, dropout=0.5)
-        self.down6 = UNetDown(512, 512, dropout=0.5)
-        self.down7 = UNetDown(512, 512, dropout=0.5)
-        self.down8 = UNetDown(512, 512, normalize=False, dropout=0.5)
-
-        self.up1 = UNetUp(512, 512, dropout=0.5)
-        self.up2 = UNetUp(1024, 512, dropout=0.5)
-        self.up3 = UNetUp(1024, 512, dropout=0.5)
-        self.up4 = UNetUp(1024, 512, dropout=0.0)
-        self.up5 = UNetUp(1024, 256, dropout=0.0)
-        self.up6 = UNetUp(512, 128, dropout=0.0)
-        self.up7 = UNetUp(256, 64, dropout=0.0)
+        
+        self.e0 = nn.Sequential(
+            nn.Conv2d(in_channels, 64, 4, 2, 1, bias=True),
+            nn.LeakyReLU(0.2)
+        )
+        self.e1 = DownBlock(64, 128)
+        self.e2 = DownBlock(128, 256)
+        self.e3 = DownBlock(256, 512)
+        self.e4 = DownBlock(512, 512)
+        self.e5 = DownBlock(512, 512)
+        self.e6 = DownBlock(512, 512)
+        
+        self.bottleneck = nn.Sequential(
+            nn.Conv2d(512, 512, 4, 2, 1, bias=True),
+            nn.ReLU()
+        )
+        
+        self.d0 = UpBlock(512, 512, dropout=True)
+        self.d1 = UpBlock(1024, 512, dropout=True)
+        self.d2 = UpBlock(1024, 512, dropout=True)
+        self.d3 = UpBlock(1024, 512, dropout=False)
+        self.d4 = UpBlock(1024, 256, dropout=False)
+        self.d5 = UpBlock(512, 128, dropout=False)
+        self.d6 = UpBlock(256, 64, dropout=False)
+        
         self.final = nn.Sequential(
-            nn.Upsample(scale_factor=2),
-            nn.ZeroPad2d((1, 0, 1, 0)),
-            nn.Conv2d(128, out_channels, 4, padding=1),
+            nn.ConvTranspose2d(128, out_channels, 4, 2, 1, bias=True),
             nn.Tanh()
         )
+
     def forward(self, x):
-        d1 = self.down1(x); d2 = self.down2(d1); d3 = self.down3(d2); d4 = self.down4(d3)
-        d5 = self.down5(d4); d6 = self.down6(d5); d7 = self.down7(d6); d8 = self.down8(d7)
-        u1 = self.up1(d8, d7); u2 = self.up2(u1, d6); u3 = self.up3(u2, d5); u4 = self.up4(u3, d4)
-        u5 = self.up5(u4, d3); u6 = self.up6(u5, d2); u7 = self.up7(u6, d1)
-        return self.final(u7)
+        e0 = self.e0(x)
+        e1 = self.e1(e0)
+        e2 = self.e2(e1)
+        e3 = self.e3(e2)
+        e4 = self.e4(e3)
+        e5 = self.e5(e4)
+        e6 = self.e6(e5)
+        
+        b = self.bottleneck(e6)
+        
+        d0 = self.d0(b, e6)
+        d1 = self.d1(d0, e5)
+        d2 = self.d2(d1, e4)
+        d3 = self.d3(d2, e3)
+        d4 = self.d4(d3, e2)
+        d5 = self.d5(d4, e1)
+        d6 = self.d6(d5, e0)
+        
+        return self.final(d6)
 
 # ==========================================
 # QUESTION 3: CycleGAN (ResNet 6-blocks)
